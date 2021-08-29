@@ -10,4 +10,4 @@ Download tutorial: [Tutorial](https://github.com/Linqiaosong/Fermi-Softness-for-
 
 Reference: B. Huang, L. Xiao, J. Lu, L. Zhuang, Angew. Chem. Int. Ed. 2016, 55, 6239 –6243
 
-![image](http://bbs.keinsci.com/forum.php?mod=attachment&aid=MjA2Nzl8MDE0MDI3ZDF8MTYzMDIzNjE1NXwxNDg0N3wxNDI0NQ%3D%3D&noupdate=yes)
+![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img.jpg)
