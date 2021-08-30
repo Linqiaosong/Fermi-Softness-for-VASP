@@ -18,7 +18,7 @@ intermediate_file_options=True
 2. Calculation again will become faster.
 3. But need more disk space.
 
-**Download script:** [Click to get script](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.0/runfs.py)
+**Download script:** [Click to get script](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.0.1/runfs.py)
 
 **Download tutorial:** [Click to get tutorial](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.0/How-to-calculate-Fermi-Softness.pdf)
 
