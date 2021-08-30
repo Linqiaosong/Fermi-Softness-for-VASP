@@ -39,6 +39,33 @@ from ase.units import Bohr
 
 
 
+#------uniform wavefunction----------
+def uniform(atoms, data=None, origin=None):
+    dx=np.array([[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]])
+
+    if data is None:
+        data = np.ones((2, 2, 2))
+    data = np.asarray(data)
+
+    if data.dtype == complex:
+        data = np.abs(data)
+
+    if origin is None:
+        origin = np.zeros(3)
+    else:
+        origin = np.asarray(origin) / Bohr
+
+    for i in range(3):
+        n = data.shape[i]
+        d = atoms.cell[i] / n / Bohr
+        dx[i] = d    
+
+    s=np.linalg.det(dx)*np.sum(data)
+
+    data=data/s
+
+    return data
+#-------End uniform wavefunction-----
 
 
 #-------write cube file function----------
@@ -414,6 +441,7 @@ if __name__ == "__main__":
 
             # read wavefunction
             data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube')
+            data=uniform(atoms,data)
 
 
             # remove intermediate files
@@ -761,6 +789,7 @@ if __name__ == "__main__":
 
             #print(f"Reading WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube")
             data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube')
+            data=uniform(atoms,data)
 
             if intermediate_file_options==False:
                 subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
@@ -805,6 +834,7 @@ if __name__ == "__main__":
                 #pass          
             #print(f"Reading WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
             data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube')
+            data=uniform(atoms,data)
 
             if intermediate_file_options==False:
                 subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
@@ -823,7 +853,7 @@ if __name__ == "__main__":
 
         # write cube
         fs_dw_file=open("LFS_DW.cube",'w')
-        write_cube(fs_dw_file,atoms,fs_dw[0.0,0.0,0.0],"Fermi_Softness_Spin=2")
+        write_cube(fs_dw_file,atoms,fs_dw,[0.0,0.0,0.0],"Fermi_Softness_Spin=2")
         fs_dw_file.close()
         #-------End:Local FS-----------------
     #----------End:spin polarization--------------
