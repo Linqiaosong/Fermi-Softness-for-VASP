@@ -99,10 +99,8 @@ def write_cube(fileobj, atoms, data=None, origin=None, comment=None):
     for i in range(3):
         n = data.shape[i]
         d = atoms.cell[i] / n / Bohr
-        dx[i] = d
         fileobj.write('{0:5}{1:12.6f}{2:12.6f}{3:12.6f}\n'.format(n, *d))
 
-    s=np.linalg.det(dx)*np.sum(data)
 
 
     positions = atoms.positions / Bohr
@@ -115,7 +113,7 @@ def write_cube(fileobj, atoms, data=None, origin=None, comment=None):
     data=np.reshape(data,(-1,k))
     for i in range(0,len(data[:,0])):
         for j in range(0,k):
-            fileobj.write(f"  {data[i,j]/s:e}")
+            fileobj.write(f"  {data[i,j]:e}")
             if (j+1) % 6 == 0:
                 fileobj.write("\n")
         if k % 6 != 0:
