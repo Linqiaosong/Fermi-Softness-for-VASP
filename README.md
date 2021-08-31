@@ -11,7 +11,7 @@
 * 1.0.1: Bug fixed. Change intergral to sum with weight.
 
 ## Introduction
-A script depending on VASP output for calculating Fermi-Softness, written by an senior undergraduate.
+A script depending on VASP output for calculating Fermi-Softness, written by a senior undergraduate.
 
 ## Dependency
 * Anaconda3: [Installation](https://www.anaconda.com/products/individual#Downloads)
