@@ -129,4 +129,4 @@ dmypy.json
 .pyre/
 
 How-to-calculate-Fermi-Softness.pptx
-example/
+test/
