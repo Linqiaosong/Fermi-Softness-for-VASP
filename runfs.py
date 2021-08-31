@@ -1,15 +1,14 @@
 ####################################################
 #
-#        Fermi-Softness Calculation v1.0           
+#        Fermi-Softness Calculation v1.1           
 #
 #             Author: Qiaosong Lin
 #            Wuhan University, China
 #
 #  Notice:
 #  1) You have already finished Non-SCF calculation
-#  2) Make sure vaspkit is in your $PATH
-#  3) Make sure INCAR OUTCAR WAVECAR POSCAR EIGENVAL 
-#     PROCAR DOSCAR exist
+#  2) Make sure vaspkit and bader are in your $PATH
+#  3) Make sure INCAR OUTCAR WAVECAR POSCAR vasprun.xml exist
 #  4) Make sure ASE was installed correctly
 #
 #  Website:
@@ -21,15 +20,19 @@
 #-------parameters----------
 kbT=0.4                            # Electron temperature (eV): recommended 0.4 by B. Huang
 dfdd_threshold=0.001               # Derivation of Fermi-Dirac distribution threshold: recommended 0.001 by B. Huang
-intermediate_file_options=True     # Save intermediate files? False or True (default: False) 
+intermediate_file_options=True     # Save intermediate files? False or True (default: False)
+bader_dir='bader'                  # Path of bader
+vaspkit_dir='vaspkit'              # Path of vaspkit
+band_gap={'VBM':0.0,'CBM':0.0}     # If band gap exists (You might need to confirm the occupation of VBM and CBM), 
+                                   # set as E_VBM,E_CBM (Do not subtract E_fermi !); Otherwise set as 0.0 0.0 (eV)
 #-------End:parameters------
-
 
 
 
 #-------import------------
 import subprocess
 import numpy as np
+from xml.etree.ElementTree import parse
 from scipy.integrate import simps
 from ase.io.cube import read_cube_data
 from ase.atoms import Atoms
@@ -41,6 +44,8 @@ from ase.units import Bohr
 
 #------uniform wavefunction----------
 def uniform(atoms, data=None, origin=None):
+# return data (np.array[i,j,k])
+
     dx=np.array([[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]])
 
     if data is None:
@@ -122,31 +127,182 @@ def write_cube(fileobj, atoms, data=None, origin=None, comment=None):
 #----------End:write cube file function-------
 
 
+#-------get VASP parameters--------------
+def get_paraments(file_dir):
+# return para (dict{})
+
+    fileobj=open(file_dir)
+    et = parse(fileobj)
+    root = et.getroot()
+
+    # get eigenvalues
+    eigen=np.array([])
+    for eigenvalues in root.findall('./calculation/eigenvalues/array/set/set/set/r'):
+        eigen=np.append(eigen,float(eigenvalues.text.split()[0]))
+
+    # get efermi
+    ef=float(root.findall('./calculation/dos/i')[0].text)
+
+    # get weight
+    kweight=np.array([])
+    w=root.findall('./kpoints/varray')[1]
+    for weight in w.findall('./v'):
+        kweight=np.append(kweight,float(weight.text))
+
+    # get kpoint
+    kpoint=len(kweight)
+
+    # get ion number
+    ion=int(root.findall('./atominfo/atoms')[0].text)
+
+    # get ispin
+    ispin=int(root.findall('./incar/i')[3].text)
+
+    # band number
+    band=int(len(eigen)/kpoint/ispin)
+
+    fileobj.close()
+
+    paraments={'NIONS':ion,
+               'NKPTS':kpoint,
+               'NBANDS':band,
+               'Ef':ef,
+               'ISPIN':ispin,
+               'EIGENVAL':eigen,
+               'WEIGHT':kweight}
+    return paraments
 
 
+#-------generate wavefunction.cube-------
+def run_vaspkit_wfn(para,k_index,band_index,vaspkit_dir):
+# band_index from 1 to band_number
+# k_index from 1 to kpoint_number
+
+    ispin=para['ISPIN']
+    ef=para['Ef']
+
+    if ispin==1:
+        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
+    else:
+        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
+    
+    if "No such file or directory" in tmp[1]:
+        vaspkit_ini=open('vaspkit.ini','w')
+        vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
+        vaspkit_ini.close()
+        tmp=subprocess.getstatusoutput(vaspkit_dir+" < vaspkit.ini > vaspkit.log")
+        if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
+            print("\n\t**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
+            exit()
 
 
-#----------main-----------------
-if __name__ == "__main__":
+#------get eigenvalue-----------
+def get_eigenvalue(para,k_index,band_index,spin):
+# band_index from 1 to band_number
+# k_index from 1 to kpoint_number    
+# spin: 1 or 2
+# return eigenvalue_k_n (float)
+    kpoint_number=para['NKPTS']
+    band_number=para['NBANDS']
+    eigen=para['EIGENVAL']
+    return eigen[(spin-1)*kpoint_number*band_number+(k_index-1)*band_number+band_index-1]
 
 
+#-------calculate LFS----------
+def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir):
+# return fs (np.array[i,j,k]) , atoms (ase.Atoms)
+
+    kpoint_number=para['NKPTS']
+    band_number=para['NBANDS']
+    ispin=para['ISPIN']
+    ef=para['Ef']
+    ion_number=para['NIONS']
+    kweight=para['WEIGHT']
+    eigen=para['EIGENVAL']
+
+    if ispin==2:
+        tagspin=['_UP','_DW']
+    else:
+        tagspin=['']
+    
+    fs=[[],[]]
+
+    for s in range(ispin):
+        i=0
+        spin=s+1
+        print(f'\n\tStart calculating intergral of spin={spin:d}:\n\tKpoint\tBand\tE-Ef/eV\t\t-dFDD\t\t\tweight')
+        for k in range(kpoint_number):
+            for b in range(band_number):
+                k_index=k+1
+                band_index=b+1
+                e_ef=get_eigenvalue(para,k_index,band_index,spin)-ef
+                dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
+                if dfdd >= dfdd_threshold:
+                    run_vaspkit_wfn(para,k_index,band_index,vaspkit_dir)
+                    i=i+1
+                else:
+                    continue
+                
+                data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}'+tagspin[s]+'.vasp.cube')
+                data=uniform(atoms,data)*dfdd
+
+                if intermediate_file_options==False:
+                    tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
+                
+                print(f"\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k]:.6f}")
+
+                if i==1:
+                    fs[s]=data*kweight[k]
+                else:
+                    fs[s]=fs[s]+data*kweight[k]            
+    
+    return fs,atoms
 
 
+#-------write LFScube-----------
+def write_lfs(para,fs,atoms,tag=''):
 
+    ispin=para['ISPIN']
+
+    if ispin==2:
+        tagspin=['_UP','_DW']
+    else:
+        tagspin=['']
+    for s in range(len(tagspin)):
+        fs_file=open("LFS"+tagspin[s]+tag+".cube",'w')
+        write_cube(fs_file,atoms,fs[s],[0.0,0.0,0.0],"Fermi_Softness"+tagspin[s]+tag)
+
+
+#-------write FSCAR----------
+def write_fscar(para,bader_dir,tag=''):
+
+    ispin=para['ISPIN']
+
+    if ispin==1:
+        subprocess.getstatusoutput(bader_dir+' LFS'+tag+'.cube')
+        subprocess.getstatusoutput('mv ACF.dat FSCAR'+tag)
+    else:
+        subprocess.getstatusoutput(bader_dir+' LFS_UP'+tag+'.cube')
+        subprocess.getstatusoutput('mv ACF.dat FSCAR_UP'+tag)
+        subprocess.getstatusoutput(bader_dir+' LFS_DW'+tag+'.cube')
+        subprocess.getstatusoutput('mv ACF.dat FSCAR_DW'+tag)
+
+
+#-------FS modudle-----------
+def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspkit_dir):
     #----------Initialization---------
     print('''
     ####################################################
     #
-    #        Fermi-Softness Calculation v1.0           
+    #        Fermi-Softness Calculation v1.1           
     #
     #             Author: Qiaosong Lin
     #            Wuhan University, China
     #
     #  Notice:
     #  1) You have already finished Non-SCF calculation
-    #  2) Make sure vaspkit is in your $PATH
-    #  3) Make sure INCAR OUTCAR WAVECAR POSCAR EIGENVAL 
-    #     PROCAR DOSCAR exist
+    #  2) Make sure vaspkit and bader are in your $PATH
+    #  3) Make sure INCAR OUTCAR WAVECAR POSCAR vasprun.xml exist
     #  4) Make sure ASE was installed correctly
     #
     #  Website:
@@ -154,30 +310,22 @@ if __name__ == "__main__":
     #
     #####################################################
     ''')
-    
-    outcar_line=subprocess.getstatusoutput('grep NKPTS OUTCAR')
-    outcar=outcar_line[1].split()
 
-    kpoint_number=int(outcar[3])
-    band_number=int(outcar[-1])
+    para=get_paraments('vasprun.xml')
 
-    outcar_line=subprocess.getstatusoutput('grep ISPIN OUTCAR')
-    outcar=outcar_line[1].split()
-    ispin=int(outcar[2])
+    kpoint_number=para['NKPTS']
+    band_number=para['NBANDS']
+    ispin=para['ISPIN']
+    ef=para['Ef']
+    ion_number=para['NIONS']
+    kweight=para['WEIGHT']
+    eigen=para['EIGENVAL']
 
-    outcar_line=subprocess.getstatusoutput('grep E-fermi OUTCAR')
-    outcar=outcar_line[1].split()
-    ef=float(outcar[2])
+    if ispin != 1 and ispin != 2:
+        print('\n\t**** !!!! ISPIN error !!!! ****')
+        exit()
 
-    outcar_line=subprocess.getstatusoutput('grep NIONS OUTCAR')
-    outcar=outcar_line[1].split()
-    ion_number=int(outcar[-1])
 
-    kweight=[1.0 for i in range(kpoint_number)]
-    outcar_line=subprocess.getstatusoutput(f'grep -A{kpoint_number:d} weights: OUTCAR')
-    outcar=outcar_line[1].split()
-    for i in range(kpoint_number):
-        kweight[i]=float(outcar[11+4*(i+1)])
 
     print(f'''
     Parameters:
@@ -188,696 +336,78 @@ if __name__ == "__main__":
     Kpoint Numbers          =    {kpoint_number:d}
     Band Numbers            =    {band_number:d}
     Ion Numbers             =    {ion_number:d}
-    Save Intermediate Files =    {intermediate_file_options:d}
+    Band Gap                =    {band_gap['CBM']-band_gap['VBM']:.6f} eV
+    CBM Energy              =    {band_gap['CBM']:.6f} eV
+    VBM Energy              =    {band_gap['VBM']:.6f} eV
+    Save Intermediate Files =    {intermediate_file_options}
+    Bader PATH              =    {bader_dir:s}
+    vaspkit PATH            =    {vaspkit_dir:s}
 
     Initialization is complete, start calculating:
     ''')
+
+    print('\tKpoint\tWeight')
+
+    for i in range(len(kweight)):
+        print(f'\t{i+1}\t{kweight[i]}')
+
 
     if intermediate_file_options==True:
         tmp=subprocess.getstatusoutput(f"ls ./WFNSQR/WFN_SQUARED_*.vasp.cube")
         if "No such file or directory" not in tmp[1]:
             subprocess.getstatusoutput(f"mv ./WFNSQR/WFN_SQUARED_*.vasp.cube .")
-        tmp=subprocess.getstatusoutput(f"ls ./DOS/PDOS_A*.dat")
-        if "No such file or directory" not in tmp[1]:
-            subprocess.getstatusoutput(f"mv ./DOS/PDOS_A*.dat .")
     #----------End:Initialization--------------
 
 
+    if band_gap['CBM']-band_gap['VBM'] <= 0.01:
+        # no gap, calculate FS
+        fs,atoms=calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir)
+        write_lfs(para,fs,atoms)
+        write_fscar(para,bader_dir)
 
-    #---------- Generate and read Total DOS---------
-    print("\nStart calculating total and projected Fermi-Softness.")
-    print("\nGenerating TDOS file:")
-    print("Running vaspkit for generating TDOS file.")
-    vaspkit_ini=open('vaspkit.ini','w')
-    vaspkit_ini.write('11\n111\n')
-    vaspkit_ini.close()
-    tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-    if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-        print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-        exit()
-    #else:
-        #print("---> Successed.")
-
-    dos=np.loadtxt('TDOS.dat',dtype=np.float64)
-    col_number=len(dos[0,:])
-    row_number=len(dos[:,0])
-    intelgral=[0 for i in range(col_number)]
-    for j in range(col_number):
-        if j==0:
-            continue
-        else:
-            for i in range(row_number):
-                e_ef=dos[i,0]
-                dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                if dfdd < dfdd_threshold:
-                    dos[i,j]=0
-                else:
-                    dos[i,j]=dos[i,j]*dfdd
-
-
-
-    #-----------non spin polarization---------
-    if ispin==1:
-
-        fscar=open('FSCAR','w')
-
-
-
-        #-----------Total FS-----------
-        tmp=subprocess.getstatusoutput('head -1 TDOS.dat')
-        tmp=tmp[1].split()
-        tmp[0]=f'{0.0:f}'
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Total Fermi-Softness.----\n')
-        fscar.write(f'{tmp:s}\n')
-        for j in [0,1]:
-            if j==0:
-                pass
-            else:
-                intelgral[j]=simps(dos[:,j],dos[:,0])
-            fscar.write(f'{intelgral[j]:f}\t')
-        fscar.write('\n\n')
-        #---------End:Total FS---------------
-
-
-
-        #-----------Projected FS of element---------
-
-        # Generate Projected DOS of element
-        print("\nGenerating PDOS file of each element:")
-        print("Running vaspkit for generating PDOS file for each element.")
-        vaspkit_ini=open('vaspkit.ini','w')
-        vaspkit_ini.write('11\n113\nall\n')
-        vaspkit_ini.close()
-        tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-        if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-            print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-            exit()
-        #else:
-            #print("---> Successed.")
-
-        datfile=subprocess.getstatusoutput('ls PDOS*.dat | grep "PDOS_[A-Z][(a-z|.)]"')
-        datfile=datfile[1].split()
-
-        tmp=subprocess.getstatusoutput(f'head -1 {datfile[0]:s}')
-        tmp=tmp[1].split()
-        tmp[0]='Element'
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Projected Fermi-Softness of each element.----\n')
-        fscar.write(f'{tmp:s}\n')
-
-
-        # read PDOS and intergral
-        for f in datfile:
-            dos=np.loadtxt(f,dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            # write datas
-            for j in range(col_number):
-                if j==0:
-                    fscar.write(f[5:-4]+'\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar.write(f'{intelgral[j]:f}\t')
-            fscar.write('\n')
-            
-        fscar.write('\n')
-        #--------End:Projected FS of element----------------
-
-
-
-        #-----------Projected FS of atom----------
-        # Generate Projected DOS of atom
-        print("\nGenerating PDOS file of each atom:")
-        for i in range(ion_number):
-            tmp=subprocess.getstatusoutput(f"ls PDOS_A{i+1:d}.dat")
-            if "No such file or directory" in tmp[1]:
-                print(f"Running vaspkit for generating PDOS file of atom {i+1:d}.")
-                vaspkit_ini=open('vaspkit.ini','w')
-                vaspkit_ini.write(f'11\n112\n{i+1:d}\nall\n')
-                vaspkit_ini.close()
-                tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-                if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-                    print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-                    exit()
-                #else:
-                    #print("---> Successed.")
-            #else:
-                #print(f"---> PDOS file of Atom {i+1:d} exists, abord running vaspkit.")
-
-        tmp=subprocess.getstatusoutput(f'head -1 PDOS_A1.dat')
-        tmp=tmp[1].split()
-        tmp[0]='Atom'
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Projected Fermi-Softness of each atom, the atom list is the same as POSCAR.----\n')
-        fscar.write(f'{tmp:s}\n')
-
-
-        # read PDOS and intergral
-        for f in range(ion_number):
-            dos=np.loadtxt(f'PDOS_A{f+1:d}.dat',dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            # write datas
-            for j in range(col_number):
-                if j==0:
-                    fscar.write(f'{f+1:d}\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar.write(f'{intelgral[j]:f}\t')
-            fscar.write('\n')
-            
-        fscar.write('\n')
-        #----------End:Projected FS of atom---------------
-
-
-        fscar.close()
-
-        #--------remove intermediate files------------
-        if intermediate_file_options==False:
-            subprocess.getstatusoutput('rm *DOS*.*')
-            subprocess.getstatusoutput('rm SELECTED_ORBITALS_LIST')
-
-
-        #-------------Local FS------------
-        print("\nStart calculating local Fermi-Softness.")
-        eigen_file=open('EIGENVAL',"r")
-        eigen_text=eigen_file.readlines()
-        eigen_file.close()
-
-        eigen_up={}
-
-        # read energy
-        for i in range(6,(band_number+2)*kpoint_number+7):
-            k_index=int((i-6)/(band_number+2))
-            band_index=(i-6)%(band_number+2)-2
-            if band_index < 0:
-                continue
-            else:
-                print(f"\n[{k_index*band_number+(band_index+1):d}/{band_number*kpoint_number:d}] Reading kpoint={k_index+1:d} band={band_index+1:d} eigenvalue from EIGENVAL.")
-                eigen_text[i]=eigen_text[i].split( )
-
-                eigen_val_up=float(eigen_text[i][1])
-                e_ef_up=eigen_val_up-ef
-                dfdd_up=(1.0/kbT)*np.exp(e_ef_up/kbT)/(np.exp(e_ef_up/kbT)+1)/(np.exp(e_ef_up/kbT)+1)
-                if dfdd_up < dfdd_threshold:
-                    print(f"kpoint={k_index+1:d} band={band_index+1:d}: -dFDD={dfdd_up:.8e} is too low, ignore.")
-                else:
-                    eigen_up[eigen_val_up]=[k_index+1,band_index+1]
-                    
-        # sort energy
-        eigen_val_up=sorted(eigen_up.keys())
-
-        # generate and read wavefunction, intergral
-        print('''\nStart calculating intergral:\nIndex\tKpoint\tBand\tE-Ef/eV\t\t-dFDD\t\t\tweight''')
-        for i in range(len(eigen_val_up)):
-            band_index=eigen_up[eigen_val_up[i]][1]
-            k_index=eigen_up[eigen_val_up[i]][0]
-
-            # generate wavefunction
-            tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
-            if "No such file or directory" in tmp[1]:
-                #print("Running vaspkit for generating wavefunction file.")
-                vaspkit_ini=open('vaspkit.ini','w')
-                vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
-                vaspkit_ini.close()
-                tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-                if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-                    print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-                    exit()
-                #else:
-                    #print("---> Successed.")
-            #else:
-                #print("---> Wavefunction file exists, abord running vaspkit.")
-            #print(f"Reading WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
-
-            # read wavefunction
-            data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube')
-            data=uniform(atoms,data)
-
-
-            # remove intermediate files
-            if intermediate_file_options==False:
-                tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
-
-
-            # intergral
-            e_ef=eigen_val_up[i]-ef
-            dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-            data=data*dfdd
-            if i==0:
-                print(f"{i+1:d}/{len(eigen_val_up):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:f}")
-                fs_up=data*kweight[k_index-1]
-            else:
-                #dE=eigen_val_up[i]-eigen_val_up[i-1]
-                print(f"{i+1:d}/{len(eigen_val_up):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:f}")
-                fs_up=fs_up+data*kweight[k_index-1]
-
-
-        # write cube
-        fs_up_file=open("LFS.cube",'w')
-        write_cube(fs_up_file,atoms,fs_up,[0.0,0.0,0.0],"Fermi_Softness")
-        fs_up_file.close()
-        #----------End:Local FS--------------
-    #--------End:non spin polarization----------------
-
-
-
-
-    #-----------spin polarization--------------
-    elif ispin==2:
-
-        fscar=open('FSCAR_UP','w')
-        fscar_dw=open('FSCAR_DW','w')
-        
-
-
-
-        #------------Total FS-------------
-        # spin=1
-        tmp=subprocess.getstatusoutput('head -1 TDOS.dat')
-        tmp=tmp[1].split()
-        tmp[0]='Spin'
-        tmp[2]=' '
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Total Fermi-Softness.----\n')
-        fscar.write(f'{tmp:s}\n')
-        for j in [0,1]:
-            if j==0:
-                intelgral[j]=1.0
-            else:
-                intelgral[j]=simps(dos[:,j],dos[:,0])
-            fscar.write(f'{intelgral[j]:f}\t')
-        fscar.write('\n\n')
-
-        # spin=2
-        tmp=subprocess.getstatusoutput('head -1 TDOS.dat')
-        tmp=tmp[1].split()
-        tmp[0]='Spin'
-        tmp[1]=' '
-        tmp='\t'.join(tmp)
-        fscar_dw.write('----Total Fermi-Softness.----\n')
-        fscar_dw.write(f'{tmp:s}\n')
-        for j in [0,2]:
-            if j==0:
-                intelgral[j]=-2.0
-            else:
-                intelgral[j]=simps(dos[:,j],dos[:,0])
-            fscar_dw.write(f'{-intelgral[j]:f}\t')
-        fscar_dw.write('\n\n')
-        #----------End:Total FS--------------
-
-
-
-
-
-        #----------Projected FS of element---------
-        print("\nGenerating PDOS file of each element:")
-        print("Running vaspkit for generating PDOS file for each element.")
-        vaspkit_ini=open('vaspkit.ini','w')
-        vaspkit_ini.write('11\n113\nall\n')
-        vaspkit_ini.close()
-        tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-        if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-            print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-            exit()
-        #else:
-        #    print("---> Successed.")
-
-
-        # spin=1
-        datfile=subprocess.getstatusoutput('ls PDOS*.dat | grep "PDOS_[A-Z][(a-z|_)]*UP"')
-        datfile=datfile[1].split()
-
-        tmp=subprocess.getstatusoutput(f'head -1 {datfile[0]:s}')
-        tmp=tmp[1].split()
-        tmp[0]='Element'
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Projected Fermi-Softness of each element.----\n')
-        fscar.write(f'{tmp:s}\n')
-
-        for f in datfile:
-            dos=np.loadtxt(f,dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            for j in range(col_number):
-                if j==0:
-                    fscar.write(f[5:-7]+'\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar.write(f'{intelgral[j]:f}\t')
-            fscar.write('\n')
-            
-        fscar.write('\n')
-
-
-        # spin=2
-        datfile=subprocess.getstatusoutput('ls PDOS*.dat | grep "PDOS_[A-Z][(a-z|_)]*DW"')
-        datfile=datfile[1].split()
-
-        tmp=subprocess.getstatusoutput(f'head -1 {datfile[0]:s}')
-        tmp=tmp[1].split()
-        tmp[0]='Element'
-        tmp='\t\t'.join(tmp)
-        fscar_dw.write('----Projected Fermi-Softness of each element.----\n')
-        fscar_dw.write(f'{tmp:s}\n')
-
-        for f in datfile:
-            dos=np.loadtxt(f,dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            for j in range(col_number):
-                if j==0:
-                    fscar_dw.write(f[5:-7]+'\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar_dw.write(f'{-intelgral[j]:f}\t')
-            fscar_dw.write('\n')
-            
-        fscar_dw.write('\n')
-        #----------End:Projected FS of element--------------
-
-
-
-
-
-        #---------Projected FS of atom------------
-        print("\nGenerating PDOS file of each atom:")
-        for i in range(ion_number):
-            tmp=subprocess.getstatusoutput(f"ls PDOS_A{i+1:d}_UP.dat PDOS_A{i+1:d}_DW.dat")
-            if "No such file or directory" in tmp[1]:
-                print(f"Running vaspkit for generating PDOS file of atom {i+1:d}.")
-                vaspkit_ini=open('vaspkit.ini','w')
-                vaspkit_ini.write(f'11\n112\n{i+1:d}\nall\n')
-                vaspkit_ini.close()
-                tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-                if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-                    print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-                    exit()
-                #else:
-                #    print("---> Successed.")
-            #else:
-            #    print(f"---> PDOS file of Atom {i+1:d} exists, abord running vaspkit.")
-
-
-
-        # spin=1
-        tmp=subprocess.getstatusoutput(f'head -1 PDOS_A1_UP.dat')
-        tmp=tmp[1].split()
-        tmp[0]='Atom'
-        tmp='\t\t'.join(tmp)
-        fscar.write('----Projected Fermi-Softness of each atom, the atom list is the same as POSCAR.----\n')
-        fscar.write(f'{tmp:s}\n')
-
-        for f in range(ion_number):
-            dos=np.loadtxt(f'PDOS_A{f+1:d}_UP.dat',dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            for j in range(col_number):
-                if j==0:
-                    fscar.write(f'{f+1:d}\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar.write(f'{intelgral[j]:f}\t')
-            fscar.write('\n')
-            
-        fscar.write('\n')
-
-
-        # spin=2
-        tmp=subprocess.getstatusoutput(f'head -1 PDOS_A1_DW.dat')
-        tmp=tmp[1].split()
-        tmp[0]='Atom'
-        tmp='\t\t'.join(tmp)
-        fscar_dw.write('----Projected Fermi-Softness of each atom, the atom list is the same as POSCAR.----\n')
-        fscar_dw.write(f'{tmp:s}\n')
-
-        for f in range(ion_number):
-            dos=np.loadtxt(f'PDOS_A{f+1:d}_DW.dat',dtype=np.float64)
-            col_number=len(dos[0,:])
-            row_number=len(dos[:,0])
-            intelgral=[0 for i in range(col_number)]
-            for j in range(col_number):
-                if j==0:
-                    continue
-                else:
-                    for i in range(row_number):
-                        e_ef=dos[i,0]
-                        dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-                        if dfdd < dfdd_threshold:
-                            dos[i,j]=0
-                        else:
-                            dos[i,j]=dos[i,j]*dfdd
-
-            for j in range(col_number):
-                if j==0:
-                    fscar_dw.write(f'{f+1:d}\t')
-                else:
-                    intelgral[j]=simps(dos[:,j],dos[:,0])
-                    fscar_dw.write(f'{-intelgral[j]:f}\t')
-            fscar_dw.write('\n')
-            
-        fscar_dw.write('\n')
-        #---------End:Projected FS of atom---------------
-
-
-
-        fscar.close()
-        fscar_dw.close()
-
-
-
-        #---------------remove intermediate files---------
-        if intermediate_file_options==False:
-            subprocess.getstatusoutput('rm *DOS*.*')
-            subprocess.getstatusoutput('rm SELECTED_ORBITALS_LIST')
-
-
-
-
-        #----------Local FS--------------
-        print("\nStart calculating local Fermi-Softness.")
-        eigen_file=open('EIGENVAL',"r")
-        eigen_text=eigen_file.readlines()
-        eigen_file.close()
-
-        eigen_up={}
-        eigen_dw={}
-
-        for i in range(6,(band_number+2)*kpoint_number+7):
-            k_index=int((i-6)/(band_number+2))
-            band_index=(i-6)%(band_number+2)-2
-            if band_index < 0:
-                continue
-            else:
-                print(f"\n[{k_index*band_number+(band_index+1):d}/{band_number*kpoint_number:d}] Reading kpoint={k_index+1:d} band={band_index+1:d} eigenvalue from EIGENVAL.")
-                eigen_text[i]=eigen_text[i].split( )
-
-                # spin=1
-                eigen_val_up=float(eigen_text[i][1])
-                e_ef_up=eigen_val_up-ef
-                dfdd_up=(1.0/kbT)*np.exp(e_ef_up/kbT)/(np.exp(e_ef_up/kbT)+1)/(np.exp(e_ef_up/kbT)+1)
-                if dfdd_up < dfdd_threshold:
-                    print(f"kpoint={k_index+1:d} band={band_index+1:d} spin=1: -dFDD={dfdd_up:.8e} is too low, ignore.")
-                else:
-                    eigen_up[eigen_val_up]=[k_index+1,band_index+1]
-
-                #spin=2
-                eigen_val_dw=float(eigen_text[i][2])
-                e_ef_dw=eigen_val_dw-ef
-                dfdd_dw=(1.0/kbT)*np.exp(e_ef_dw/kbT)/(np.exp(e_ef_dw/kbT)+1)/(np.exp(e_ef_dw/kbT)+1)
-                if dfdd_dw < dfdd_threshold:
-                    print(f"kpoint={k_index+1:d} band={band_index+1:d} spin=2: -dFDD={dfdd_dw:.8e} is too low, ignore.")
-                else:
-                    eigen_dw[eigen_val_dw]=[k_index+1,band_index+1]
-
-                    
-
-
-        eigen_val_up=sorted(eigen_up.keys())
-        eigen_val_dw=sorted(eigen_dw.keys())
-
-
-        # spin=1
-        print('''\nStart calculating intergral of spin=1:\nIndex\tKpoint\tBand\tE-Ef/eV\t\t-dFDD\t\t\tweight''')
-        for i in range(len(eigen_val_up)):
-            band_index=eigen_up[eigen_val_up[i]][1]
-            k_index=eigen_up[eigen_val_up[i]][0]
-            tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
-            if "No such file or directory" in tmp[1]:
-                #print("Running vaspkit for generating wavefunction file.")
-                vaspkit_ini=open('vaspkit.ini','w')
-                vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
-                vaspkit_ini.close()
-                tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-                if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-                    print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-                    exit()
-                #else:
-                    #print("---> Successed.")
-                    #pass
-            #else:
-                #print("---> Wavefunction file exists, abord running vaspkit.")
-                #pass
-
-            #print(f"Reading WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube")
-            data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube')
-            data=uniform(atoms,data)
-
-            if intermediate_file_options==False:
-                subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
-
-            e_ef=eigen_val_up[i]-ef
-            dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-            data=data*dfdd
-            if i==0:
-                print(f"{i+1:d}/{len(eigen_val_up):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:f}")
-                fs_up=data*kweight[k_index-1]
-            else:
-                #dE=eigen_val_up[i]-eigen_val_up[i-1]
-                print(f"{i+1:d}/{len(eigen_val_up):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:f}")
-                fs_up=fs_up+data*kweight[k_index-1]
-        
-        # write cube
-        fs_up_file=open("LFS_UP.cube",'w')
-        write_cube(fs_up_file,atoms,fs_up,[0.0,0.0,0.0],"Fermi_Softness_Spin=1")
-        fs_up_file.close()
-
-
-        # spin=2    
-        print('''\nStart calculating intergral of spin=2:\nIndex\tKpoint\tBand\tE-Ef/eV\t\t-dFDD\t\t\tweight''')
-        for i in range(len(eigen_val_dw)):
-            band_index=eigen_dw[eigen_val_dw[i]][1]
-            k_index=eigen_dw[eigen_val_dw[i]][0]
-            tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
-            if "No such file or directory" in tmp[1]:
-                #print("Running vaspkit for generating wavefunction file.")
-                vaspkit_ini=open('vaspkit.ini','w')
-                vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
-                vaspkit_ini.close()
-                tmp=subprocess.getstatusoutput("vaspkit < vaspkit.ini > vaspkit.log")
-                if tmp[0] != 0 or "unknown" in tmp[1].lower() or "error" in tmp[1].lower():
-                    print("**** !!!! Running vaspkit error! check the vaspkit.log !!!! ****")
-                    exit()
-                #else:
-                    #print("---> Successed.")
-                    #pass
-            #else:
-                #print("---> Wavefunction file exists, abord running vaspkit.")  
-                #pass          
-            #print(f"Reading WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
-            data, atoms = read_cube_data(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube')
-            data=uniform(atoms,data)
-
-            if intermediate_file_options==False:
-                subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
-
-            e_ef=eigen_val_dw[i]-ef
-            dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
-            data=data*dfdd
-            if i==0:
-                print(f"{i+1:d}/{len(eigen_val_dw):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:.6f}")
-                fs_dw=data*kweight[k_index-1]
-            else:
-                #dE=eigen_val_dw[i]-eigen_val_dw[i-1]
-                print(f"{i+1:d}/{len(eigen_val_dw):d}\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k_index-1]:.6f}")
-                fs_dw=fs_dw+data*kweight[k_index-1] 
-
-
-        # write cube
-        fs_dw_file=open("LFS_DW.cube",'w')
-        write_cube(fs_dw_file,atoms,fs_dw,[0.0,0.0,0.0],"Fermi_Softness_Spin=2")
-        fs_dw_file.close()
-        #-------End:Local FS-----------------
-    #----------End:spin polarization--------------
-
-
-    #----------if spin error!---------------------
     else:
-        print("**** !!!! Reading ISPIN from OUTCAR error !!!! ****")
-        exit()
+        #----------calculate CB--------
+        para_cbm=copy.deepcopy(para)
+        # remove band under E_CBM
+        for i in range(len(para_cbm['EIGENVAL'])):
+            if para_cbm['EIGENVAL'][i]<band_gap['CBM']:
+                para_cbm['EIGENVAL'][i]=99.0
+        # change Ef to E_CBM
+        para_cbm['Ef']=band_gap['CBM']
+        # calculate FS
+        fs,atoms=calc_lfs(para_cbm,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir)
+        write_lfs(para_cbm,fs,atoms,'_CB')
+        write_fscar(para_cbm,bader_dir,'_CB')    
 
+        #---------calculate VB-----------
+        para_vbm=copy.deepcopy(para)
+        # remove band above E_VBM
+        for i in range(len(para_vbm['EIGENVAL'])):
+            if para_vbm['EIGENVAL'][i]>band_gap['VBM']:
+                para_vbm['EIGENVAL'][i]=-99.0
+        # change Ef to E_CBM
+        para_vbm['Ef']=band_gap['VBM']
+        # calculate FS
+        fs,atoms=calc_lfs(para_vbm,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir)
+        write_lfs(para_vbm,fs,atoms,'_VB')
+        write_fscar(para_vbm,bader_dir,'_VB')      
 
     #-----------save intermediate files-----------
     if intermediate_file_options==True:
-        subprocess.getstatusoutput('mkdir WFNSQR DOS')
+        subprocess.getstatusoutput('mkdir WFNSQR')
         subprocess.getstatusoutput('mv WFN_SQUARED* WFNSQR')
-        subprocess.getstatusoutput('mv *DOS*.* DOS')
-        subprocess.getstatusoutput('mv SELECTED_ORBITALS_LIST DOS')
 
 
     #-----------remove temp----------
-    subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log')
+    subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log AVF.dat BCF.dat')
 
     #-----------print success--------
     print('\nThe calculation ends normally.')
-    
-#-------End:main------------
 
 
+
+#----------main-----------------
+if __name__ == "__main__":
+
+    run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspkit_dir)
 
