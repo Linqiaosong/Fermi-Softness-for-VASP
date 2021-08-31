@@ -19,26 +19,34 @@
 
 #-------parameters----------
 kbT=0.4                            # Electron temperature (eV): recommended 0.4 by B. Huang
+
 dfdd_threshold=0.001               # Derivation of Fermi-Dirac distribution threshold: recommended 0.001 by B. Huang
+
 intermediate_file_options=True     # Save intermediate files? False or True (default: False)
-bader_dir='bader'                  # Path of bader
-vaspkit_dir='vaspkit'              # Path of vaspkit
-band_gap={'VBM':0.0,'CBM':0.0}     # If band gap exists (You might need to confirm the occupation of VBM and CBM), 
-                                   # set as E_VBM,E_CBM (Do not subtract E_fermi !); Otherwise set as 0.0 0.0 (eV)
-#-------End:parameters------
+
+bader_dir='bader'                  # Path of bader, if bader is in your $PATH, you don't need to change it
+
+vaspkit_dir='vaspkit'              # Path of vaspkit, if vaspkit is in your $PATH, you don't need to change it
+
+band_gap={'VBM':[-5.0382],             # If band gap exists (You might need to confirm the occupation of VBM and CBM):
+          'CBM':[-1.0331]}             # non-spin polarization: set as 'VBM':[E_VBM],'CBM':[E_CBM] (Do not minus E_fermi)
+                                   # spin polarization: set as 'VBM':[E_VBM_UP,E_VBM_DW],'CBM':[E_CBM_UP,E_CBM_DW]
+                                   # Otherwise: set as 'VBM':[0.0],'CBM':[0.0]
+#----------------------------                                   
 
 
 
 #-------import------------
 import subprocess
 import numpy as np
+import copy
 from xml.etree.ElementTree import parse
-from scipy.integrate import simps
+from pathlib import Path
 from ase.io.cube import read_cube_data
 from ase.atoms import Atoms
 from ase.io import read
 from ase.units import Bohr
-#--------End:import-----------
+
 
 
 
@@ -70,13 +78,11 @@ def uniform(atoms, data=None, origin=None):
     data=data/s
 
     return data
-#-------End uniform wavefunction-----
+
 
 
 #-------write cube file function----------
 def write_cube(fileobj, atoms, data=None, origin=None, comment=None):
-
-    dx=np.array([[0.0,0.0,0.0],[0.0,0.0,0.0],[0.0,0.0,0.0]])
 
     if data is None:
         data = np.ones((2, 2, 2))
@@ -124,7 +130,7 @@ def write_cube(fileobj, atoms, data=None, origin=None, comment=None):
         if k % 6 != 0:
             fileobj.write("\n")
     fileobj.write("\n")
-#----------End:write cube file function-------
+
 
 
 #-------get VASP parameters--------------
@@ -166,7 +172,7 @@ def get_paraments(file_dir):
     paraments={'NIONS':ion,
                'NKPTS':kpoint,
                'NBANDS':band,
-               'Ef':ef,
+               'Ef':[ef,ef],
                'ISPIN':ispin,
                'EIGENVAL':eigen,
                'WEIGHT':kweight}
@@ -179,14 +185,20 @@ def run_vaspkit_wfn(para,k_index,band_index,vaspkit_dir):
 # k_index from 1 to kpoint_number
 
     ispin=para['ISPIN']
-    ef=para['Ef']
 
     if ispin==1:
-        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
+        p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
+        p2=p1
+        #tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
     else:
-        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
+        p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube")
+        p2=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
+        #tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
     
-    if "No such file or directory" in tmp[1]:
+    if p1.exists() and p2.exists():
+        return 0
+    #if "No such file or directory" in tmp[1]:
+    else:
         vaspkit_ini=open('vaspkit.ini','w')
         vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
         vaspkit_ini.close()
@@ -235,7 +247,7 @@ def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir):
             for b in range(band_number):
                 k_index=k+1
                 band_index=b+1
-                e_ef=get_eigenvalue(para,k_index,band_index,spin)-ef
+                e_ef=get_eigenvalue(para,k_index,band_index,spin)-ef[s]
                 dfdd=(1.0/kbT)*np.exp(e_ef/kbT)/(np.exp(e_ef/kbT)+1)/(np.exp(e_ef/kbT)+1)
                 if dfdd >= dfdd_threshold:
                     run_vaspkit_wfn(para,k_index,band_index,vaspkit_dir)
@@ -247,7 +259,9 @@ def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir):
                 data=uniform(atoms,data)*dfdd
 
                 if intermediate_file_options==False:
-                    tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
+                    p=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
+                    p.unlink(True)
+                    #tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
                 
                 print(f"\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k]:.6f}")
 
@@ -280,12 +294,21 @@ def write_fscar(para,bader_dir,tag=''):
 
     if ispin==1:
         subprocess.getstatusoutput(bader_dir+' LFS'+tag+'.cube')
-        subprocess.getstatusoutput('mv ACF.dat FSCAR'+tag)
+        p=Path('ACF.dat')
+        target=Path('FSCAR'+tag)
+        p.rename(target)
+        #subprocess.getstatusoutput('mv ACF.dat FSCAR'+tag)
     else:
         subprocess.getstatusoutput(bader_dir+' LFS_UP'+tag+'.cube')
-        subprocess.getstatusoutput('mv ACF.dat FSCAR_UP'+tag)
+        p=Path('ACF.dat')
+        target=Path('FSCAR_UP'+tag)
+        p.rename(target)
+        #subprocess.getstatusoutput('mv ACF.dat FSCAR_UP'+tag)
         subprocess.getstatusoutput(bader_dir+' LFS_DW'+tag+'.cube')
-        subprocess.getstatusoutput('mv ACF.dat FSCAR_DW'+tag)
+        p=Path('ACF.dat')
+        target=Path('FSCAR_DW'+tag)
+        p.rename(target)
+        #subprocess.getstatusoutput('mv ACF.dat FSCAR_DW'+tag)
 
 
 #-------FS modudle-----------
@@ -331,14 +354,13 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
     Parameters:
     Electron temperature    =    {kbT:.6f} eV
     dFDD threshold          =    {dfdd_threshold:f}
-    Fermi Energy            =    {ef:.6f} eV
+    Fermi Energy            =    {ef[0]:.6f} eV
     ISPIN                   =    {ispin:d}
     Kpoint Numbers          =    {kpoint_number:d}
     Band Numbers            =    {band_number:d}
     Ion Numbers             =    {ion_number:d}
-    Band Gap                =    {band_gap['CBM']-band_gap['VBM']:.6f} eV
-    CBM Energy              =    {band_gap['CBM']:.6f} eV
-    VBM Energy              =    {band_gap['VBM']:.6f} eV
+    CBM Energy              =    {band_gap['CBM']} eV
+    VBM Energy              =    {band_gap['VBM']} eV
     Save Intermediate Files =    {intermediate_file_options}
     Bader PATH              =    {bader_dir:s}
     vaspkit PATH            =    {vaspkit_dir:s}
@@ -353,13 +375,20 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
 
 
     if intermediate_file_options==True:
-        tmp=subprocess.getstatusoutput(f"ls ./WFNSQR/WFN_SQUARED_*.vasp.cube")
-        if "No such file or directory" not in tmp[1]:
-            subprocess.getstatusoutput(f"mv ./WFNSQR/WFN_SQUARED_*.vasp.cube .")
+        p=Path('WFNSQR')
+        wfn=list(p.glob('WFN_SQUARED_*'))
+        for q in wfn:
+            target=q.name
+            q.link_to(target)
+            q.unlink(True)
+            
+        # tmp=subprocess.getstatusoutput(f"ls ./WFNSQR/WFN_SQUARED_*.vasp.cube")
+        # if "No such file or directory" not in tmp[1]:
+        #     subprocess.getstatusoutput(f"mv ./WFNSQR/WFN_SQUARED_*.vasp.cube .")
     #----------End:Initialization--------------
 
 
-    if band_gap['CBM']-band_gap['VBM'] <= 0.01:
+    if band_gap['CBM'] == [0.0] and band_gap['VBM'] == [0.0]:
         # no gap, calculate FS
         fs,atoms=calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir)
         write_lfs(para,fs,atoms)
@@ -370,8 +399,8 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
         para_cbm=copy.deepcopy(para)
         # remove band under E_CBM
         for i in range(len(para_cbm['EIGENVAL'])):
-            if para_cbm['EIGENVAL'][i]<band_gap['CBM']:
-                para_cbm['EIGENVAL'][i]=99.0
+            if para_cbm['EIGENVAL'][i] < min(band_gap['CBM']):
+                para_cbm['EIGENVAL'][i] = 99.0
         # change Ef to E_CBM
         para_cbm['Ef']=band_gap['CBM']
         # calculate FS
@@ -383,8 +412,8 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
         para_vbm=copy.deepcopy(para)
         # remove band above E_VBM
         for i in range(len(para_vbm['EIGENVAL'])):
-            if para_vbm['EIGENVAL'][i]>band_gap['VBM']:
-                para_vbm['EIGENVAL'][i]=-99.0
+            if para_vbm['EIGENVAL'][i] > max(band_gap['VBM']):
+                para_vbm['EIGENVAL'][i] = -99.0
         # change Ef to E_CBM
         para_vbm['Ef']=band_gap['VBM']
         # calculate FS
@@ -394,12 +423,24 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
 
     #-----------save intermediate files-----------
     if intermediate_file_options==True:
-        subprocess.getstatusoutput('mkdir WFNSQR')
-        subprocess.getstatusoutput('mv WFN_SQUARED* WFNSQR')
+        p=Path('WFNSQR')
+        p.mkdir(exist_ok=True)
+        q=Path('.')
+        wfn=list(q.glob('WFN_SQUARED_*'))
+        for f in wfn:
+            target= p / f
+            f.link_to(target)
+            f.unlink(True)
+        # subprocess.getstatusoutput('mkdir WFNSQR')
+        # subprocess.getstatusoutput('mv WFN_SQUARED* WFNSQR')
 
 
     #-----------remove temp----------
-    subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log AVF.dat BCF.dat')
+    Path('vaspkit.ini').unlink(True)
+    Path('vaspkit.log').unlink(True)
+    Path('AVF.dat').unlink(True)
+    Path('BCF.dat').unlink(True)
+    #subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log AVF.dat BCF.dat')
 
     #-----------print success--------
     print('\nThe calculation ends normally.')
@@ -408,6 +449,4 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
 
 #----------main-----------------
 if __name__ == "__main__":
-
     run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspkit_dir)
-
