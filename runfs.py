@@ -22,14 +22,14 @@ kbT=0.4                            # Electron temperature (eV): recommended 0.4 
 
 dfdd_threshold=0.001               # Derivation of Fermi-Dirac distribution threshold: recommended 0.001 by B. Huang
 
-intermediate_file_options=True     # Save intermediate files? False or True (default: False)
+intermediate_file_options=False     # Save intermediate files? False or True (default: False)
 
 bader_dir='bader'                  # Path of bader, if bader is in your $PATH, you don't need to change it
 
 vaspkit_dir='vaspkit'              # Path of vaspkit, if vaspkit is in your $PATH, you don't need to change it
 
-band_gap={'VBM':[-5.0382],             # If band gap exists (You might need to confirm the occupation of VBM and CBM):
-          'CBM':[-1.0331]}             # non-spin polarization: set as 'VBM':[E_VBM],'CBM':[E_CBM] (Do not minus E_fermi)
+band_gap={'VBM':[0.0],             # If band gap exists (You might need to confirm the occupation of VBM and CBM):
+          'CBM':[0.0]}             # non-spin polarization: set as 'VBM':[E_VBM],'CBM':[E_CBM] (Do not minus E_fermi)
                                    # spin polarization: set as 'VBM':[E_VBM_UP,E_VBM_DW],'CBM':[E_CBM_UP,E_CBM_DW]
                                    # Otherwise: set as 'VBM':[0.0],'CBM':[0.0]
 #----------------------------                                   
