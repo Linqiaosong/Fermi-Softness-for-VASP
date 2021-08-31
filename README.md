@@ -30,7 +30,7 @@ A script depending on VASP output for calculating Fermi-Softness, written by a s
 
 ## What is Fermi-Softness
 
-![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img.jpg)
+![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img/img.jpg)
 
 
-![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img2.png)
+![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img/img2.png)
