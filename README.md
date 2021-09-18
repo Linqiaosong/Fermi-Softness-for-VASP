@@ -1,4 +1,4 @@
-# Fermi-Softness-for-VASP
+# Fermi softness calculation for Vienna Ab initio Simulation Package (VASP)
 
 ## Update
 
@@ -11,7 +11,7 @@
 * 1.0.1: Bug fixed. Change intergral to sum with weight.
 
 ## Introduction
-A script depending on VASP output for calculating Fermi-Softness, written by a senior undergraduate.
+In 2016, Huang and Zhuang proposed the theory and applications of a concept dubbed "Fermi softness", which distinguishes itself by enabling prediction of surface reactivity with spatial as well as atomic resolution. Herein, we provide a script depending on Vienna Ab initio Simulation Package (VASP) output for calculating Fermi softness.
 
 ## Dependency
 * Anaconda3: [Installation](https://www.anaconda.com/products/individual#Downloads)
