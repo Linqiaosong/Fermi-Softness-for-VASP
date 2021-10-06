@@ -2,6 +2,7 @@
 
 ## Update
 
+* 1.1.1: Bug fixed. Fixed the bug of ISPIN error.
 * 1.1.0: **Big update:** 
     1. Rewrote the code.
     2. Use Bader atomic division instead of W-S division. 
@@ -20,7 +21,7 @@ In 2016, Huang and Zhuang proposed the theory and applications of a concept dubb
 * Bader: [Installation](http://theory.cm.utexas.edu/henkelman/code/bader/)
 
 ## Download script
-[Click to get script](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.1.0/runfs.py)
+[Click to get script](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.1.1/runfs.py)
 
 ## Download tutorials
 [Click to get tutorials](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.1.0/How-to-calculate-Fermi-Softness.pdf)
