@@ -147,11 +147,11 @@ def get_paraments(file_dir):
         eigen=np.append(eigen,float(eigenvalues.text.split()[0]))
 
     # get efermi
-    ef=float(root.findall('./calculation/dos/i')[0].text)
+    ef=float(root.findall('./calculation/dos/i[@name="efermi"]')[0].text)
 
     # get weight
     kweight=np.array([])
-    w=root.findall('./kpoints/varray')[1]
+    w=root.findall('./kpoints/varray[@name="weights"]')[0]
     for weight in w.findall('./v'):
         kweight=np.append(kweight,float(weight.text))
 
@@ -162,7 +162,7 @@ def get_paraments(file_dir):
     ion=int(root.findall('./atominfo/atoms')[0].text)
 
     # get ispin
-    ispin=int(root.findall('./incar/i')[3].text)
+    spin=int(root.findall('./incar/i[@name="ISPIN"]')[0].text)
 
     # band number
     band=int(len(eigen)/kpoint/ispin)
