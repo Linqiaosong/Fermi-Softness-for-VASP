@@ -162,7 +162,7 @@ def get_paraments(file_dir):
     ion=int(root.findall('./atominfo/atoms')[0].text)
 
     # get ispin
-    spin=int(root.findall('./incar/i[@name="ISPIN"]')[0].text)
+    ispin=int(root.findall('./incar/i[@name="ISPIN"]')[0].text)
 
     # band number
     band=int(len(eigen)/kpoint/ispin)
@@ -259,8 +259,10 @@ def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir):
                 data=uniform(atoms,data)*dfdd
 
                 if intermediate_file_options==False:
-                    p=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
-                    p.unlink(True)
+                    p=Path('.')
+                    wfn=list(p.glob(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*'))
+                    for q in wfn:
+                        q.unlink(True)
                     #tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
                 
                 print(f"\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k]:.6f}")
