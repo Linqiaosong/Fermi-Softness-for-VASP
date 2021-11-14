@@ -16,7 +16,7 @@
 In 2016, Huang and Zhuang proposed the theory and applications of a concept dubbed "Fermi softness", which distinguishes itself by enabling prediction of surface reactivity with spatial as well as atomic resolution. Herein, we provide a script depending on Vienna Ab initio Simulation Package (VASP) output for calculating Fermi softness.
 
 ## Dependency
-* Anaconda3: [Installation](https://www.anaconda.com/products/individual#Downloads)
+* Anaconda3 (Python >= 3.8.5): [Installation](https://www.anaconda.com/products/individual#Downloads)
 * ASE: [Installation](https://wiki.fysik.dtu.dk/ase/install.html)
 * vaspkit: [Installation](https://vaspkit.com/installation.html)
 * Bader: [Installation](http://theory.cm.utexas.edu/henkelman/code/bader/)
