@@ -2,7 +2,7 @@
 
 ## Update
 
-* 1.1.3：Bug fixed. Fixed the bug of ISPIN error.
+* 1.1.3: Bug fixed. Fixed the bug of ISPIN error.
 * 1.1.2: Bug fixed. Fixed the bug of intermidiate files path.
 * 1.1.1: Bug fixed. Fixed the bug of ISPIN error.
 * 1.1.0: **Big update:** 
