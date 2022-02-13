@@ -41,7 +41,7 @@ import subprocess
 import numpy as np
 import copy
 from xml.etree.ElementTree import parse
-from pathlib import Path
+#from pathlib import Path
 from ase.io.cube import read_cube_data
 from ase.atoms import Atoms
 from ase.io import read
@@ -162,7 +162,7 @@ def get_paraments(file_dir):
     ion=int(root.findall('./atominfo/atoms')[0].text)
 
     # get ispin
-    ispin=int(root.findall('./incar/i[@name="ISPIN"]')[0].text)
+    ispin=int(root.findall('./parameters/separator[@name="electronic"]/separator[@name="electronic spin"]/i[@name="ISPIN"]')[0].text)
 
     # band number
     band=int(len(eigen)/kpoint/ispin)
@@ -187,17 +187,18 @@ def run_vaspkit_wfn(para,k_index,band_index,vaspkit_dir):
     ispin=para['ISPIN']
 
     if ispin==1:
-        p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
-        p2=p1
-        #tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
+        # p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
+        # p2=p1
+        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}.vasp.cube")
     else:
-        p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube")
-        p2=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
-        #tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
+        # p1=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube")
+        # p2=Path(f"WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
+        tmp=subprocess.getstatusoutput(f"ls WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_UP.vasp.cube WFN_SQUARED_B{band_index:04d}_K{k_index:04d}_DW.vasp.cube")
     
-    if p1.exists() and p2.exists():
+    # if p1.exists() and p2.exists():
+    #     return 0
+    if "No such file or directory" not in tmp[1]:
         return 0
-    #if "No such file or directory" in tmp[1]:
     else:
         vaspkit_ini=open('vaspkit.ini','w')
         vaspkit_ini.write(f'51\n516\n{k_index:d}\n{band_index:d}\n')
@@ -259,11 +260,11 @@ def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,vaspkit_dir):
                 data=uniform(atoms,data)*dfdd
 
                 if intermediate_file_options==False:
-                    p=Path('.')
-                    wfn=list(p.glob(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*'))
-                    for q in wfn:
-                        q.unlink(True)
-                    #tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
+                    # p=Path('.')
+                    # wfn=list(p.glob(f'WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*'))
+                    # for q in wfn:
+                    #     q.unlink(True)
+                    tmp=subprocess.getstatusoutput(f"rm WFN_SQUARED_B{band_index:04d}_K{k_index:04d}*.vasp.cube")
                 
                 print(f"\t{k_index:d}\t{band_index:d}\t{e_ef:.6f}\t{dfdd:.8e}\t\t{kweight[k]:.6f}")
 
@@ -296,21 +297,21 @@ def write_fscar(para,bader_dir,tag=''):
 
     if ispin==1:
         subprocess.getstatusoutput(bader_dir+' LFS'+tag+'.cube')
-        p=Path('ACF.dat')
-        target=Path('FSCAR'+tag)
-        p.rename(target)
-        #subprocess.getstatusoutput('mv ACF.dat FSCAR'+tag)
+        # p=Path('ACF.dat')
+        # target=Path('FSCAR'+tag)
+        # p.rename(target)
+        subprocess.getstatusoutput('mv ACF.dat FSCAR'+tag)
     else:
         subprocess.getstatusoutput(bader_dir+' LFS_UP'+tag+'.cube')
-        p=Path('ACF.dat')
-        target=Path('FSCAR_UP'+tag)
-        p.rename(target)
-        #subprocess.getstatusoutput('mv ACF.dat FSCAR_UP'+tag)
+        # p=Path('ACF.dat')
+        # target=Path('FSCAR_UP'+tag)
+        # p.rename(target)
+        subprocess.getstatusoutput('mv ACF.dat FSCAR_UP'+tag)
         subprocess.getstatusoutput(bader_dir+' LFS_DW'+tag+'.cube')
-        p=Path('ACF.dat')
-        target=Path('FSCAR_DW'+tag)
-        p.rename(target)
-        #subprocess.getstatusoutput('mv ACF.dat FSCAR_DW'+tag)
+        # p=Path('ACF.dat')
+        # target=Path('FSCAR_DW'+tag)
+        # p.rename(target)
+        subprocess.getstatusoutput('mv ACF.dat FSCAR_DW'+tag)
 
 
 #-------FS modudle-----------
@@ -377,16 +378,16 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
 
 
     if intermediate_file_options==True:
-        p=Path('WFNSQR')
-        wfn=list(p.glob('WFN_SQUARED_*'))
-        for q in wfn:
-            target=q.name
-            q.link_to(target)
-            q.unlink(True)
+        # p=Path('WFNSQR')
+        # wfn=list(p.glob('WFN_SQUARED_*'))
+        # for q in wfn:
+        #     target=q.name
+        #     q.link_to(target)
+        #     q.unlink(True)
             
-        # tmp=subprocess.getstatusoutput(f"ls ./WFNSQR/WFN_SQUARED_*.vasp.cube")
-        # if "No such file or directory" not in tmp[1]:
-        #     subprocess.getstatusoutput(f"mv ./WFNSQR/WFN_SQUARED_*.vasp.cube .")
+        tmp=subprocess.getstatusoutput(f"ls ./WFNSQR/WFN_SQUARED_*.vasp.cube")
+        if "No such file or directory" not in tmp[1]:
+            subprocess.getstatusoutput(f"mv ./WFNSQR/WFN_SQUARED_*.vasp.cube .")
     #----------End:Initialization--------------
 
 
@@ -425,24 +426,24 @@ def run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspk
 
     #-----------save intermediate files-----------
     if intermediate_file_options==True:
-        p=Path('WFNSQR')
-        p.mkdir(exist_ok=True)
-        q=Path('.')
-        wfn=list(q.glob('WFN_SQUARED_*'))
-        for f in wfn:
-            target= p / f
-            f.link_to(target)
-            f.unlink(True)
-        # subprocess.getstatusoutput('mkdir WFNSQR')
-        # subprocess.getstatusoutput('mv WFN_SQUARED* WFNSQR')
+        # p=Path('WFNSQR')
+        # p.mkdir(exist_ok=True)
+        # q=Path('.')
+        # wfn=list(q.glob('WFN_SQUARED_*'))
+        # for f in wfn:
+        #     target= p / f
+        #     f.link_to(target)
+        #     f.unlink(True)
+        subprocess.getstatusoutput('mkdir WFNSQR')
+        subprocess.getstatusoutput('mv WFN_SQUARED* WFNSQR')
 
 
     #-----------remove temp----------
-    Path('vaspkit.ini').unlink(True)
-    Path('vaspkit.log').unlink(True)
-    Path('AVF.dat').unlink(True)
-    Path('BCF.dat').unlink(True)
-    #subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log AVF.dat BCF.dat')
+    # Path('vaspkit.ini').unlink(True)
+    # Path('vaspkit.log').unlink(True)
+    # Path('AVF.dat').unlink(True)
+    # Path('BCF.dat').unlink(True)
+    subprocess.getstatusoutput('rm vaspkit.ini vaspkit.log AVF.dat BCF.dat')
 
     #-----------print success--------
     print('\nThe calculation ends normally.')
