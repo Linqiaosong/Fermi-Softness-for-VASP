@@ -6,7 +6,7 @@
 #            Wuhan University, China
 #
 #  Notice:
-#  1) You have already finished Non-SCF calculation
+#  1) You have already finished single point calculation with &MO_CUBES
 #  2) Make sure bader is in your $PATH
 #  3) Make sure ASE was installed correctly
 #
@@ -253,7 +253,7 @@ def run_fs(kbT,dfdd_threshold,band_gap,bader_dir,filename,project_name,ispin):
     #            Wuhan University, China
     #
     #  Notice:
-    #  1) You have already finished Non-SCF calculation
+    #  1) You have already finished single point calculation with &MO_CUBES
     #  2) Make sure bader is in your $PATH
     #  3) Make sure ASE was installed correctly
     #
