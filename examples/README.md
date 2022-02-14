@@ -29,4 +29,4 @@ All structures have been relaxed, you only need to complete the following steps:
 
 ## Calculation results
 
-You can find test results from ```Fermi-Softness-for-VASP/test_results/```.
+You can find test results from ```./test_results/```.

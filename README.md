@@ -23,17 +23,17 @@ In 2016, Huang and Zhuang proposed the theory and applications of a concept dubb
 * Bader: [Installation](http://theory.cm.utexas.edu/henkelman/code/bader/)
 
 ## Download script
-[Click to get script](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.1.3/runfs.py)
+[Click to get script](https://github.com/Linqiaosong/fermi-softness/releases/download/1.1.3/runfs.py)
 
 ## Download tutorials
-[Click to get tutorials](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/releases/download/1.1.0/How-to-calculate-Fermi-Softness.pdf)
+[Click to get tutorials](https://github.com/Linqiaosong/fermi-softness/releases/download/1.1.0/How-to-calculate-Fermi-Softness.pdf)
 
 ## Reference
 * [B. Huang, L. Xiao, J. Lu, L. Zhuang, Angew. Chem. Int. Ed. 2016, 55, 6239–6243](https://onlinelibrary.wiley.com/doi/abs/10.1002/ange.201601824)
 
 ## What is Fermi-Softness
 
-![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img/img.jpg)
+![image](https://github.com/Linqiaosong/fermi-softness/blob/main/img/img.jpg)
 
 
 ![image](https://github.com/Linqiaosong/Fermi-Softness-for-VASP/blob/main/img/img2.png)
