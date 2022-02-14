@@ -1,4 +1,4 @@
-# Fermi softness calculation for Vienna Ab initio Simulation Package (VASP)
+# Fermi softness calculation
 
 ## Update
 
