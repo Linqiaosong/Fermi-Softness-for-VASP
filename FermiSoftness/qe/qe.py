@@ -247,7 +247,7 @@ def get_eigenvalue(para,k_index,band_index,spin):
 
 
 #-------calculate LFS----------
-def calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,pp_laucher):
+def calc_lfs(para,prefix,outdir,kbT,dfdd_threshold,intermediate_file_options,pp_laucher):
 # return fs (np.array[i,j,k]) , atoms (ase.Atoms)
 
     kpoint_number=para['NKPTS']
@@ -413,7 +413,7 @@ def run_fs(prefix,outdir,kbT,dfdd_threshold,band_gap,intermediate_file_options,b
 
     if band_gap['CBM'] == [0.0] and band_gap['VBM'] == [0.0]:
         # no gap, calculate FS
-        fs,atoms=calc_lfs(para,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
+        fs,atoms=calc_lfs(para,prefix,outdir,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
         write_lfs(para,fs,atoms)
         write_fscar(para,bader_dir)
 
@@ -427,7 +427,7 @@ def run_fs(prefix,outdir,kbT,dfdd_threshold,band_gap,intermediate_file_options,b
         # change Ef to E_CBM
         para_cbm['Ef']=band_gap['CBM']
         # calculate FS
-        fs,atoms=calc_lfs(para_cbm,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
+        fs,atoms=calc_lfs(para_cbm,prefix,outdir,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
         write_lfs(para_cbm,fs,atoms,'_CB')
         write_fscar(para_cbm,bader_dir,'_CB')    
 
@@ -440,7 +440,7 @@ def run_fs(prefix,outdir,kbT,dfdd_threshold,band_gap,intermediate_file_options,b
         # change Ef to E_CBM
         para_vbm['Ef']=band_gap['VBM']
         # calculate FS
-        fs,atoms=calc_lfs(para_vbm,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
+        fs,atoms=calc_lfs(para_vbm,prefix,outdir,kbT,dfdd_threshold,intermediate_file_options,pp_laucher)
         write_lfs(para_vbm,fs,atoms,'_VB')
         write_fscar(para_vbm,bader_dir,'_VB')      
 

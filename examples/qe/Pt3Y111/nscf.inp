@@ -1,0 +1,46 @@
+&control
+ calculation= 'nscf'
+ prefix= 'pwscf'
+ outdir= './tmp'
+ pseudo_dir= './'
+/
+&system
+ ibrav= 0
+ nat=    16
+ ntyp=    2
+ ecutwfc= 44.0
+ occupations = 'smearing', smearing = 'gauss', degauss = 1.0d-9
+/
+&electrons
+    electron_maxstep = 100
+    conv_thr = 1.0d-9
+    mixing_mode = 'plain'
+    mixing_beta = 0.8d0
+    diagonalization = 'david'
+/
+CELL_PARAMETERS angstrom
+    5.84119987    0.00000000    0.00000000
+    2.92059994    5.05862748    0.00000000
+    0.00000000    0.00000000   22.15399933
+ATOMIC_SPECIES
+Y   88.9058  Y.pbe-spn-kjpaw_psl.1.0.0.UPF
+Pt 195.0845  Pt.pbe-n-kjpaw_psl.1.0.0.UPF
+ATOMIC_POSITIONS angstrom
+Y     0.000000    0.000000    2.000063
+Y     5.841229    3.372435    4.384719
+Y     2.920571    1.686192    6.769376
+Y     0.000000    0.000000    9.154032
+Pt    4.380900    2.529314    2.000063
+Pt    1.460329    0.843121    4.384719
+Pt    7.301470    4.215506    6.769376
+Pt    4.380900    2.529314    9.154032
+Pt    1.460300    2.529314    2.000063
+Pt    4.380929    0.843121    4.384719
+Pt    4.380871    4.215506    6.769376
+Pt    1.460300    2.529314    9.154032
+Pt    2.920600    0.000000    2.000063
+Pt    2.920629    3.372435    4.384719
+Pt    5.841171    1.686192    6.769376
+Pt    2.920600    0.000000    9.154032
+K_POINTS automatic
+9 9 1 0 0 0

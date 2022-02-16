@@ -68,7 +68,7 @@ run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspkit_d
 
 prefix='pwscf'
 
-outdir='./tmp'
+outdir='./'
 
 kbT=0.4                            # Electron temperature (eV): recommended 0.4 by B. Huang
 
@@ -140,3 +140,4 @@ run_fs(kbT,dfdd_threshold,band_gap,bader_dir,filename,project_name,ispin)
     
 if __name__ == "__main__":
     gen(software='vasp',perfix='runfs.py')
+    
