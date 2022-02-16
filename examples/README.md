@@ -7,7 +7,7 @@ All structures have been relaxed, you only need to complete the following steps:
 
 For VASP and Quantum-Espresso Users:
 1. Static calculation (SCF).
-2. Static calculation (non-SCF), read CHGCAR generated from SCF.
+2. Static calculation (non-SCF).
 3. Calculate Total, Condensed and Local Fermi-Softness.
 
 
