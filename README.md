@@ -1,5 +1,8 @@
 # Fermi softness calculation
 
+**Warning: In current version, FSCAR is wrong, that the Bader division was according to the local Fermi softness. The strict method, the Bader division should be according to the total charge density. Therefore, the correct method should be to calculate an total charge density (core + valance) grid (assuming it is called chgsum.cube), and then use ```bader LFS.cube -ref chgsum.cube```.**
+
+
 ## Update
 * 1.2.0: **Big update:** 
     1. Can be installed by pip.
