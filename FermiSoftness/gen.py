@@ -26,7 +26,7 @@ kbT=0.4                            # Electron temperature (eV): recommended 0.4 
 
 dfdd_threshold=0.001               # Derivation of Fermi-Dirac distribution threshold: recommended 0.001 by B. Huang
 
-intermediate_file_options=False     # Save intermediate files? False or True (default: False)
+intermediate_file_options=False    # Save intermediate files? False or True (default: False)
 
 bader_dir='bader'                  # Path of bader, if bader is in your $PATH, you don't need to change it
 
@@ -66,19 +66,19 @@ run_fs(kbT,dfdd_threshold,band_gap,intermediate_file_options,bader_dir,vaspkit_d
 
 #-------parameters----------
 
-prefix='pwscf'
+prefix='pwscf'                     # The same of prefix in your input file
 
-outdir='./'
+outdir='./'                        # The same of outdir in your input file, current dir shoule be set as './'
 
 kbT=0.4                            # Electron temperature (eV): recommended 0.4 by B. Huang
 
 dfdd_threshold=0.001               # Derivation of Fermi-Dirac distribution threshold: recommended 0.001 by B. Huang
 
-intermediate_file_options=False     # Save intermediate files? False or True (default: False)
+intermediate_file_options=False    # Save intermediate files? False or True (default: False)
 
 bader_dir='bader'                  # Path of bader, if bader is in your $PATH, you don't need to change it
 
-pp_laucher='mpirun -np 4 pp.x'                 # Laucher of pp.x, e.g.: 'pp.x' or 'mpirun -np 4 pp.x'
+pp_laucher='mpirun -np 4 pp.x'     # Laucher of pp.x, e.g.: 'pp.x' or 'mpirun -np 4 pp.x'
 
 band_gap={'VBM':[0.0],             # If band gap exists (You might need to confirm the occupation of VBM and CBM):
           'CBM':[0.0]}             # non-spin polarization: set as 'VBM':[E_VBM],'CBM':[E_CBM] (Do not minus E_fermi)
@@ -112,11 +112,11 @@ run_fs(prefix,outdir,kbT,dfdd_threshold,band_gap,intermediate_file_options,bader
 
 #-------parameters----------
 
-filename='pt3y.out'
+filename='pt3y.out'                # Output file name
 
-project_name='pt3y'
+project_name='pt3y'                # The same of PROJECT in your input file
 
-ispin=1
+ispin=1                            # If you used UKS or LSD, set as 2; Otherwise, set as 1
 
 kbT=0.4                            # Electron temperature (eV): recommended 0.4 by B. Huang
 

@@ -4,7 +4,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='FermiSoftness',
-    version='1.2.0',
+    version='1.2.0.1',
     author='linqiaosong',
     author_email='linqiaosong@outlook.com',
     url='https://github.com/Linqiaosong/Fermi-Softness-for-VASP',
